@@ -286,60 +286,87 @@ export function analyzePattern(pair: string): { action: 'BUY' | 'SELL'; confiden
 
   const currentPrice = priceHistory[priceHistory.length - 1].close;
   const lastPrice = priceHistory[priceHistory.length - 2].close;
-  const trend = currentPrice > lastPrice ? 'bullish' : 'bearish';
+  const priceChange = ((currentPrice - lastPrice) / lastPrice) * 100;
+
+  const recentClose = priceHistory.slice(-5).map(p => p.close);
+  const isConsecutiveGain = recentClose[0] < recentClose[1] && recentClose[1] < recentClose[2];
+  const isConsecutiveLoss = recentClose[0] > recentClose[1] && recentClose[1] > recentClose[2];
 
   let bullishSignals = 0;
   let bearishSignals = 0;
   let totalSignals = 0;
 
-  if (rsi < 30) bullishSignals++;
-  else if (rsi > 70) bearishSignals++;
-  totalSignals++;
-
-  if (histogram > 0 && macd > signal) bullishSignals++;
-  else if (histogram < 0 && macd < signal) bearishSignals++;
-  totalSignals++;
-
-  if (currentPrice > sma20 && sma20 > sma50) bullishSignals++;
-  else if (currentPrice < sma20 && sma20 < sma50) bearishSignals++;
-  totalSignals++;
-
-  if (currentPrice > ema9) bullishSignals++;
-  else if (currentPrice < ema9) bearishSignals++;
-  totalSignals++;
-
-  if (trend === 'bullish' && currentPrice > support) bullishSignals++;
-  else if (trend === 'bearish' && currentPrice < resistance) bearishSignals++;
-  totalSignals++;
-
-  if (stoch_k < 20) bullishSignals++;
-  else if (stoch_k > 80) bearishSignals++;
-  if (stoch_k > stoch_d) bullishSignals += 0.5;
-  else bearishSignals += 0.5;
+  if (rsi < 35) bullishSignals += 1.5;
+  else if (rsi < 50) bullishSignals += 0.8;
+  else if (rsi > 65) bearishSignals += 1.5;
+  else if (rsi > 50) bearishSignals += 0.8;
   totalSignals += 1.5;
 
-  if (currentPrice < lower) bullishSignals++;
-  else if (currentPrice > upper) bearishSignals++;
-  if (currentPrice > middle) bullishSignals += 0.5;
-  else bearishSignals += 0.5;
+  const histogramStrength = Math.abs(histogram);
+  if (histogram > 0 && macd > signal) {
+    bullishSignals += 1 + (histogramStrength > 0.01 ? 0.5 : 0);
+  } else if (histogram < 0 && macd < signal) {
+    bearishSignals += 1 + (histogramStrength > 0.01 ? 0.5 : 0);
+  }
   totalSignals += 1.5;
+
+  if (currentPrice > sma20 && sma20 > sma50) bullishSignals += 1.2;
+  else if (currentPrice > sma20 && currentPrice > sma50) bullishSignals += 0.8;
+  else if (currentPrice < sma20 && sma20 < sma50) bearishSignals += 1.2;
+  else if (currentPrice < sma20 && currentPrice < sma50) bearishSignals += 0.8;
+  totalSignals += 1.2;
+
+  const distToEma = Math.abs(currentPrice - ema9) / ema9;
+  if (currentPrice > ema9 && distToEma < 0.01) bullishSignals += 1;
+  else if (currentPrice > ema9) bullishSignals += 0.6;
+  else if (currentPrice < ema9 && distToEma < 0.01) bearishSignals += 1;
+  else if (currentPrice < ema9) bearishSignals += 0.6;
+  totalSignals += 1;
+
+  if (isConsecutiveGain && currentPrice > support) bullishSignals += 1.5;
+  else if (isConsecutiveLoss && currentPrice < resistance) bearishSignals += 1.5;
+  totalSignals += 1.5;
+
+  if (stoch_k < 20) bullishSignals += 1.2;
+  else if (stoch_k < 35) bullishSignals += 0.6;
+  else if (stoch_k > 80) bearishSignals += 1.2;
+  else if (stoch_k > 65) bearishSignals += 0.6;
+
+  if (stoch_k > stoch_d) bullishSignals += 0.7;
+  else bearishSignals += 0.7;
+  totalSignals += 1.9;
+
+  const bandPosition = (currentPrice - lower) / (upper - lower);
+  if (currentPrice < lower) bullishSignals += 1.3;
+  else if (bandPosition < 0.2) bullishSignals += 0.8;
+  else if (currentPrice > upper) bearishSignals += 1.3;
+  else if (bandPosition > 0.8) bearishSignals += 0.8;
+
+  if (currentPrice > middle && bandPosition > 0.4) bullishSignals += 0.6;
+  else if (currentPrice < middle && bandPosition < 0.6) bearishSignals += 0.6;
+  totalSignals += 2;
 
   const recentHigh = Math.max(...priceHistory.slice(-5).map(p => p.high));
   const recentLow = Math.min(...priceHistory.slice(-5).map(p => p.low));
   const volatility = recentHigh - recentLow;
+  const volatilityRatio = atr / (volatility || 0.001);
 
-  if (atr > volatility * 0.5) bullishSignals += 0.3;
-  else bearishSignals += 0.3;
-  totalSignals += 0.3;
+  if (volatilityRatio > 1) bullishSignals += 0.4;
+  else bearishSignals += 0.4;
+  totalSignals += 0.4;
+
+  if (priceChange > 0.05 && rsi < 70) bullishSignals += 0.8;
+  if (priceChange < -0.05 && rsi > 30) bearishSignals += 0.8;
+  totalSignals += 0.8;
 
   const bullishPercentage = (bullishSignals / totalSignals) * 100;
   const action = bullishSignals > bearishSignals ? 'BUY' : 'SELL';
 
   const confirmationStrength = Math.abs(bullishSignals - bearishSignals);
   const baseConfidence = bullishPercentage;
-  const confidence = Math.round(baseConfidence * (confirmationStrength / totalSignals) * 1.8);
+  const confidence = Math.round(baseConfidence * (confirmationStrength / totalSignals) * 2.1);
 
-  return { action, confidence: Math.min(99, confidence) };
+  return { action, confidence: Math.min(99, Math.max(52, confidence)) };
 }
 
 function analyzeMultiTimeframe(pair: string): number {
@@ -348,12 +375,36 @@ function analyzeMultiTimeframe(pair: string): number {
 
   const short_rsi = calculateRSI(shortTerm);
   const short_trend = shortTerm[shortTerm.length - 1].close > shortTerm[0].close ? 1 : -1;
+  const short_momentum = (shortTerm[shortTerm.length - 1].close - shortTerm[0].close) / shortTerm[0].close;
 
   const allPrices = simulator.getPriceHistory(pair, 50);
   const medium_rsi = calculateRSI(allPrices);
   const medium_trend = allPrices[allPrices.length - 1].close > allPrices[0].close ? 1 : -1;
+  const medium_momentum = (allPrices[allPrices.length - 1].close - allPrices[0].close) / allPrices[0].close;
 
-  return (short_trend === medium_trend ? 0.8 : 0.3) + (Math.abs(short_rsi - medium_rsi) > 20 ? 0.1 : 0);
+  let mtfScore = 0;
+
+  if (short_trend === medium_trend) {
+    mtfScore += 1.2;
+  } else {
+    mtfScore += 0.1;
+  }
+
+  if (Math.abs(short_momentum) > 0.01) {
+    mtfScore += 0.4;
+  }
+
+  if (Math.abs(medium_momentum) > 0.02) {
+    mtfScore += 0.4;
+  }
+
+  if (Math.abs(short_rsi - medium_rsi) > 20) {
+    mtfScore += 0.2;
+  } else if (Math.abs(short_rsi - medium_rsi) < 5) {
+    mtfScore += 0.3;
+  }
+
+  return Math.min(1.2, mtfScore);
 }
 
 export function generateSignal(thresholdOverride?: number) {
