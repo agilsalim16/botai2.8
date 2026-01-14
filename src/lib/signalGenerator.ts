@@ -296,77 +296,88 @@ export function analyzePattern(pair: string): { action: 'BUY' | 'SELL'; confiden
   let bearishSignals = 0;
   let totalSignals = 0;
 
-  if (rsi < 35) bullishSignals += 1.5;
-  else if (rsi < 50) bullishSignals += 0.8;
-  else if (rsi > 65) bearishSignals += 1.5;
-  else if (rsi > 50) bearishSignals += 0.8;
-  totalSignals += 1.5;
+  // Extreme RSI readings = high conviction (M5 sensitive)
+  if (rsi < 25) bullishSignals += 3;
+  else if (rsi < 35) bullishSignals += 2.5;
+  else if (rsi < 50) bullishSignals += 1.2;
+  else if (rsi > 75) bearishSignals += 3;
+  else if (rsi > 65) bearishSignals += 2.5;
+  else if (rsi > 50) bearishSignals += 1.2;
+  totalSignals += 3;
 
+  // MACD crossovers with histogram strength
   const histogramStrength = Math.abs(histogram);
   if (histogram > 0 && macd > signal) {
-    bullishSignals += 1 + (histogramStrength > 0.01 ? 0.5 : 0);
+    bullishSignals += 2.5 + (histogramStrength > 0.015 ? 1.5 : histogramStrength > 0.005 ? 0.8 : 0);
   } else if (histogram < 0 && macd < signal) {
-    bearishSignals += 1 + (histogramStrength > 0.01 ? 0.5 : 0);
+    bearishSignals += 2.5 + (histogramStrength > 0.015 ? 1.5 : histogramStrength > 0.005 ? 0.8 : 0);
   }
-  totalSignals += 1.5;
+  totalSignals += 2.5;
 
-  if (currentPrice > sma20 && sma20 > sma50) bullishSignals += 1.2;
-  else if (currentPrice > sma20 && currentPrice > sma50) bullishSignals += 0.8;
-  else if (currentPrice < sma20 && sma20 < sma50) bearishSignals += 1.2;
-  else if (currentPrice < sma20 && currentPrice < sma50) bearishSignals += 0.8;
-  totalSignals += 1.2;
+  // MA alignment (strong signals for aligned MAs)
+  if (currentPrice > sma20 && sma20 > sma50) bullishSignals += 2.5;
+  else if (currentPrice > sma20 && currentPrice > sma50) bullishSignals += 1.5;
+  else if (currentPrice < sma20 && sma20 < sma50) bearishSignals += 2.5;
+  else if (currentPrice < sma20 && currentPrice < sma50) bearishSignals += 1.5;
+  totalSignals += 2.5;
 
+  // EMA proximity (M5 tight EMA distances mean strong direction)
   const distToEma = Math.abs(currentPrice - ema9) / ema9;
-  if (currentPrice > ema9 && distToEma < 0.01) bullishSignals += 1;
-  else if (currentPrice > ema9) bullishSignals += 0.6;
-  else if (currentPrice < ema9 && distToEma < 0.01) bearishSignals += 1;
-  else if (currentPrice < ema9) bearishSignals += 0.6;
-  totalSignals += 1;
-
-  if (isConsecutiveGain && currentPrice > support) bullishSignals += 1.5;
-  else if (isConsecutiveLoss && currentPrice < resistance) bearishSignals += 1.5;
-  totalSignals += 1.5;
-
-  if (stoch_k < 20) bullishSignals += 1.2;
-  else if (stoch_k < 35) bullishSignals += 0.6;
-  else if (stoch_k > 80) bearishSignals += 1.2;
-  else if (stoch_k > 65) bearishSignals += 0.6;
-
-  if (stoch_k > stoch_d) bullishSignals += 0.7;
-  else bearishSignals += 0.7;
-  totalSignals += 1.9;
-
-  const bandPosition = (currentPrice - lower) / (upper - lower);
-  if (currentPrice < lower) bullishSignals += 1.3;
-  else if (bandPosition < 0.2) bullishSignals += 0.8;
-  else if (currentPrice > upper) bearishSignals += 1.3;
-  else if (bandPosition > 0.8) bearishSignals += 0.8;
-
-  if (currentPrice > middle && bandPosition > 0.4) bullishSignals += 0.6;
-  else if (currentPrice < middle && bandPosition < 0.6) bearishSignals += 0.6;
+  if (currentPrice > ema9 && distToEma < 0.005) bullishSignals += 2;
+  else if (currentPrice > ema9 && distToEma < 0.015) bullishSignals += 1.3;
+  else if (currentPrice < ema9 && distToEma < 0.005) bearishSignals += 2;
+  else if (currentPrice < ema9 && distToEma < 0.015) bearishSignals += 1.3;
   totalSignals += 2;
 
+  // Consecutive patterns (strong for M5)
+  if (isConsecutiveGain && currentPrice > support) bullishSignals += 2.5;
+  else if (isConsecutiveLoss && currentPrice < resistance) bearishSignals += 2.5;
+  totalSignals += 2.5;
+
+  // Stochastic K%D (sensitive M5 indicator)
+  if (stoch_k < 15) bullishSignals += 2.2;
+  else if (stoch_k < 30) bullishSignals += 1.5;
+  else if (stoch_k > 85) bearishSignals += 2.2;
+  else if (stoch_k > 70) bearishSignals += 1.5;
+
+  if (stoch_k > stoch_d) bullishSignals += 1.2;
+  else bearishSignals += 1.2;
+  totalSignals += 2.2;
+
+  // Bollinger Bands (extremes = high confidence)
+  const bandPosition = (currentPrice - lower) / (upper - lower);
+  if (currentPrice < lower) bullishSignals += 2.5;
+  else if (bandPosition < 0.15) bullishSignals += 1.8;
+  else if (currentPrice > upper) bearishSignals += 2.5;
+  else if (bandPosition > 0.85) bearishSignals += 1.8;
+
+  if (currentPrice > middle && bandPosition > 0.5) bullishSignals += 0.8;
+  else if (currentPrice < middle && bandPosition < 0.5) bearishSignals += 0.8;
+  totalSignals += 2.5;
+
+  // Volatility analysis
   const recentHigh = Math.max(...priceHistory.slice(-5).map(p => p.high));
   const recentLow = Math.min(...priceHistory.slice(-5).map(p => p.low));
   const volatility = recentHigh - recentLow;
   const volatilityRatio = atr / (volatility || 0.001);
 
-  if (volatilityRatio > 1) bullishSignals += 0.4;
-  else bearishSignals += 0.4;
-  totalSignals += 0.4;
-
-  if (priceChange > 0.05 && rsi < 70) bullishSignals += 0.8;
-  if (priceChange < -0.05 && rsi > 30) bearishSignals += 0.8;
+  if (volatilityRatio > 1.2) bullishSignals += 0.8;
+  else if (volatilityRatio > 0.8) bearishSignals += 0.8;
   totalSignals += 0.8;
+
+  // Price momentum (M5 requires bigger moves)
+  if (priceChange > 0.08 && rsi < 70) bullishSignals += 1.5;
+  if (priceChange < -0.08 && rsi > 30) bearishSignals += 1.5;
+  totalSignals += 1.5;
 
   const bullishPercentage = (bullishSignals / totalSignals) * 100;
   const action = bullishSignals > bearishSignals ? 'BUY' : 'SELL';
 
   const confirmationStrength = Math.abs(bullishSignals - bearishSignals);
   const baseConfidence = bullishPercentage;
-  const confidence = Math.round(baseConfidence * (confirmationStrength / totalSignals) * 2.1);
+  const confidence = Math.round((baseConfidence * (confirmationStrength / totalSignals)) * 3.5);
 
-  return { action, confidence: Math.min(99, Math.max(52, confidence)) };
+  return { action, confidence: Math.min(99, Math.max(45, confidence)) };
 }
 
 function analyzeMultiTimeframe(pair: string): number {
@@ -411,17 +422,17 @@ export function generateSignal(thresholdOverride?: number) {
   const session = getCurrentSession();
   const pairs = session.pairs;
 
-  let threshold = thresholdOverride ?? 75;
+  let threshold = thresholdOverride ?? 65;
   if (thresholdOverride === undefined) {
     const savedSettings = localStorage.getItem('tradingSettings');
     if (savedSettings) {
       const settings = JSON.parse(savedSettings);
-      threshold = settings.confidenceThreshold ?? 75;
+      threshold = settings.confidenceThreshold ?? 65;
     }
   }
 
   let attempts = 0;
-  const maxAttempts = 20;
+  const maxAttempts = 50;
   let bestSignal = null;
   let bestConfidence = 0;
 
@@ -432,7 +443,8 @@ export function generateSignal(thresholdOverride?: number) {
     if (confidence > bestConfidence) {
       bestConfidence = confidence;
       const mtf = analyzeMultiTimeframe(pair);
-      const finalConfidence = Math.min(99, Math.round(confidence + (mtf * 5)));
+      const mtfBoost = mtf > 1 ? (mtf - 1) * 8 : mtf * 4;
+      const finalConfidence = Math.min(99, Math.round(confidence + mtfBoost));
 
       bestSignal = {
         pair,
@@ -451,7 +463,7 @@ export function generateSignal(thresholdOverride?: number) {
     attempts++;
   }
 
-  return null;
+  return bestSignal;
 }
 
 export function getTimeUntilNextInterval(): number {
